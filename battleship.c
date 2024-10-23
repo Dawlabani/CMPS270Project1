@@ -322,7 +322,7 @@ void gameLoop(Player* player1, Player* player2, Fleet* fleet1, Fleet* fleet2, bo
             break;
         }
         swapPlayers(&currentPlayer, &opponent);
-        swapPlayers((Player**)&currentFleet, (Player**)&opponentFleet); // Swap fleets
+        swapPlayers((Player*)&currentFleet, (Player*)&opponentFleet); // Swap fleets
     }
 }
 
@@ -370,45 +370,30 @@ void performMove(Player* player, Player* opponent, Fleet* opponentFleet, bool ha
 
         char* token = strtok(input, " ");
         if (token == NULL) {
-            printf("Invalid input format. Press Enter to continue...");
+            printf("Invalid input format.\n");
+            printf("You lose your turn. Press Enter to continue...");
             fflush(stdout);
             getchar();
-            if (hardMode) {
-                printf("You lose your turn. Press Enter to continue...");
-                fflush(stdout);
-                getchar();
-                return;
-            }
-            continue;
+            return; // Player loses turn
         }
         strcpy(command, token);
 
         token = strtok(NULL, " ");
         if (token == NULL) {
-            printf("Invalid input format. Press Enter to continue...");
+            printf("Invalid input format.\n");
+            printf("You lose your turn. Press Enter to continue...");
             fflush(stdout);
             getchar();
-            if (hardMode) {
-                printf("You lose your turn. Press Enter to continue...");
-                fflush(stdout);
-                getchar();
-                return;
-            }
-            continue;
+            return; // Player loses turn
         }
         strcpy(argument, token);
 
         if (!isValidCommand(command, player)) {
-            printf("Invalid command or command not available. Press Enter to continue...");
+            printf("Invalid command or command not available.\n");
+            printf("You lose your turn. Press Enter to continue...");
             fflush(stdout);
             getchar();
-            if (hardMode) {
-                printf("You lose your turn. Press Enter to continue...");
-                fflush(stdout);
-                getchar();
-                return;
-            }
-            continue;
+            return; // Player loses turn
         }
 
         if (strcmp(command, "fire") == 0) {
@@ -433,15 +418,11 @@ void performMove(Player* player, Player* opponent, Fleet* opponentFleet, bool ha
                 fflush(stdout);
                 getchar();
             } else {
-                printf("Invalid coordinates. Press Enter to continue...");
+                printf("Invalid coordinates.\n");
+                printf("You lose your turn. Press Enter to continue...");
                 fflush(stdout);
                 getchar();
-                if (hardMode) {
-                    printf("You lose your turn. Press Enter to continue...");
-                    fflush(stdout);
-                    getchar();
-                    return;
-                }
+                return; // Player loses turn
             }
         } else if (strcmp(command, "radar") == 0) {
             if (player->radarSweepsUsed < MAX_RADAR_SWEEPS) {
@@ -453,26 +434,18 @@ void performMove(Player* player, Player* opponent, Fleet* opponentFleet, bool ha
                     fflush(stdout);
                     getchar();
                 } else {
-                    printf("Invalid coordinates. Press Enter to continue...");
-                    fflush(stdout);
-                    getchar();
-                    if (hardMode) {
-                        printf("You lose your turn. Press Enter to continue...");
-                        fflush(stdout);
-                        getchar();
-                        return;
-                    }
-                }
-            } else {
-                printf("You cannot deploy a radar sweep as you have reached the limit. Press Enter to continue...");
-                fflush(stdout);
-                getchar();
-                if (hardMode) {
+                    printf("Invalid coordinates.\n");
                     printf("You lose your turn. Press Enter to continue...");
                     fflush(stdout);
                     getchar();
-                    return;
+                    return; // Player loses turn
                 }
+            } else {
+                printf("You cannot deploy a radar sweep as you have reached the limit.\n");
+                printf("You lose your turn. Press Enter to continue...");
+                fflush(stdout);
+                getchar();
+                return; // Player loses turn
             }
         } else if (strcmp(command, "smoke") == 0) {
             if (player->smokeScreensUsed < player->shipsSunk) {
@@ -484,26 +457,18 @@ void performMove(Player* player, Player* opponent, Fleet* opponentFleet, bool ha
                     fflush(stdout);
                     getchar();
                 } else {
-                    printf("Invalid coordinates. Press Enter to continue...");
-                    fflush(stdout);
-                    getchar();
-                    if (hardMode) {
-                        printf("You lose your turn. Press Enter to continue...");
-                        fflush(stdout);
-                        getchar();
-                        return;
-                    }
-                }
-            } else {
-                printf("You cannot deploy a smoke screen as you have reached the limit. Press Enter to continue...");
-                fflush(stdout);
-                getchar();
-                if (hardMode) {
+                    printf("Invalid coordinates.\n");
                     printf("You lose your turn. Press Enter to continue...");
                     fflush(stdout);
                     getchar();
-                    return;
+                    return; // Player loses turn
                 }
+            } else {
+                printf("You cannot deploy a smoke screen as you have reached the limit.\n");
+                printf("You lose your turn. Press Enter to continue...");
+                fflush(stdout);
+                getchar();
+                return; // Player loses turn
             }
         } else if (strcmp(command, "artillery") == 0) {
             Coordinate coord = parseCoordinate(argument);
@@ -515,23 +480,27 @@ void performMove(Player* player, Player* opponent, Fleet* opponentFleet, bool ha
                 fflush(stdout);
                 getchar();
             } else {
-                printf("Invalid coordinates. Press Enter to continue...");
+                printf("Invalid coordinates.\n");
+                printf("You lose your turn. Press Enter to continue...");
                 fflush(stdout);
                 getchar();
-                if (hardMode) {
-                    printf("You lose your turn. Press Enter to continue...");
-                    fflush(stdout);
-                    getchar();
-                    return;
-                }
+                return; // Player loses turn
             }
         } else if (strcmp(command, "torpedo") == 0) {
-            torpedo(player, opponent, opponentFleet, argument, hardMode);
-            validMove = true;
-            player->torpedoAvailable = false;
-            printf("Press Enter to continue...");
-            fflush(stdout);
-            getchar();
+            if (argument[0] != '\0') {
+                torpedo(player, opponent, opponentFleet, argument, hardMode);
+                validMove = true;
+                player->torpedoAvailable = false;
+                printf("Press Enter to continue...");
+                fflush(stdout);
+                getchar();
+            } else {
+                printf("Invalid input.\n");
+                printf("You lose your turn. Press Enter to continue...");
+                fflush(stdout);
+                getchar();
+                return; // Player loses turn
+            }
         }
     }
 }
