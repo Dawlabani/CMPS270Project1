@@ -27,6 +27,7 @@ typedef struct {
     struct {
         int x;
         int y;
+        bool active; // Add an 'active' flag
     } smokeScreens[SHIP_TYPES];
 } Player;
 
@@ -58,6 +59,7 @@ Coordinate parseCoordinate(const char* input);
 void clearScreen();
 void gameLoop(Player* player1, Player* player2, Fleet* fleet1, Fleet* fleet2, bool hardMode);
 void swapPlayers(Player** currentPlayer, Player** opponent);
+void swapFleets(Fleet** currentFleet, Fleet** opponentFleet);
 void performMove(Player* player, Player* opponent, Fleet* opponentFleet, bool hardMode);
 int fire(Player* player, Player* opponent, Fleet* opponentFleet, Coordinate coord, bool hardMode, char* sunkShipName);
 void radarSweep(Player* player, Player* opponent, Coordinate coord);
@@ -73,6 +75,7 @@ void getInput(char* input, int size);
 void coordinateToString(Coordinate coord, char* coordStr);
 void toLowerCase(char* str);
 void flushInputBuffer();
+
 
 int main() {
     srand((unsigned int)time(NULL));
@@ -94,12 +97,22 @@ int main() {
         hardMode = true;
     }
 
-    // Get player names
-    printf("Enter name for Player 1: ");
-    getInput(player1.name, sizeof(player1.name));
+    // Get player names with input validation
+    do {
+        printf("Enter name for Player 1: ");
+        getInput(player1.name, sizeof(player1.name));
+        if (strlen(player1.name) == 0) {
+            printf("Name cannot be empty. Please enter a valid name.\n");
+        }
+    } while (strlen(player1.name) == 0);
 
-    printf("Enter name for Player 2: ");
-    getInput(player2.name, sizeof(player2.name));
+    do {
+        printf("Enter name for Player 2: ");
+        getInput(player2.name, sizeof(player2.name));
+        if (strlen(player2.name) == 0) {
+            printf("Name cannot be empty. Please enter a valid name.\n");
+        }
+    } while (strlen(player2.name) == 0);
 
     // Randomly choose first player
     Player* currentPlayer = (rand() % 2 == 0) ? &player1 : &player2;
@@ -159,6 +172,7 @@ void initializePlayer(Player* player) {
     for (int i = 0; i < SHIP_TYPES; i++) {
         player->smokeScreens[i].x = -1;
         player->smokeScreens[i].y = -1;
+        player->smokeScreens[i].active = false; // Initialize as inactive
     }
 }
 
@@ -322,7 +336,7 @@ void gameLoop(Player* player1, Player* player2, Fleet* fleet1, Fleet* fleet2, bo
             break;
         }
         swapPlayers(&currentPlayer, &opponent);
-        swapPlayers((Player*)&currentFleet, (Player*)&opponentFleet); // Swap fleets
+        swapFleets(&currentFleet, &opponentFleet); // Swap fleets correctly
     }
 }
 
@@ -330,6 +344,12 @@ void swapPlayers(Player** currentPlayer, Player** opponent) {
     Player* temp = *currentPlayer;
     *currentPlayer = *opponent;
     *opponent = temp;
+}
+
+void swapFleets(Fleet** currentFleet, Fleet** opponentFleet) {
+    Fleet* temp = *currentFleet;
+    *currentFleet = *opponentFleet;
+    *opponentFleet = temp;
 }
 
 void performMove(Player* player, Player* opponent, Fleet* opponentFleet, bool hardMode) {
@@ -558,13 +578,16 @@ void radarSweep(Player* player, Player* opponent, Coordinate coord) {
     player->radarSweepsUsed++;
     bool found = false;
 
-    // Check if the radar sweep area overlaps any smoke screen areas
+    // Check if the radar sweep area overlaps any active smoke screen areas
     for (int s = 0; s < opponent->smokeScreensUsed; s++) {
+        if (!opponent->smokeScreens[s].active) continue; // Skip inactive smoke screens
+
         int sx = opponent->smokeScreens[s].x;
         int sy = opponent->smokeScreens[s].y;
         if (coord.x + 1 >= sx && coord.x <= sx + 1 &&
             coord.y + 1 >= sy && coord.y <= sy + 1) {
             printf("No enemy ships found.\n");
+            opponent->smokeScreens[s].active = false; // Deactivate the smoke screen
             return;
         }
     }
@@ -591,9 +614,10 @@ void smokeScreen(Player* player, Coordinate coord) {
         printf("Invalid coordinates.\n");
         return;
     }
-    // Store the smoke screen area
+    // Store the smoke screen area and set it as active
     player->smokeScreens[player->smokeScreensUsed].x = coord.x;
     player->smokeScreens[player->smokeScreensUsed].y = coord.y;
+    player->smokeScreens[player->smokeScreensUsed].active = true; // Set as active
     player->smokeScreensUsed++;
     clearScreen();
     printf("Smoke screen deployed.\n");
@@ -602,11 +626,12 @@ void smokeScreen(Player* player, Coordinate coord) {
 void artillery(Player* player, Player* opponent, Fleet* opponentFleet, Coordinate coord, bool hardMode) {
     int totalHits = 0;
     int totalMisses = 0;
+    int alreadyTargeted = 0; // New variable to count already targeted tiles
     char sunkShips[SHIP_TYPES][20] = { "" };
     int sunkShipsCount = 0;
 
     printf("Artillery strike results:\n");
-    // Adjusted to target a 2x2 area starting from the provided coordinate
+    // Target a 2x2 area starting from the provided coordinate
     for (int i = coord.y; i <= coord.y + 1; i++) {
         for (int j = coord.x; j <= coord.x + 1; j++) {
             if (i >= 0 && i < GRID_SIZE && j >= 0 && j < GRID_SIZE) {
@@ -620,6 +645,8 @@ void artillery(Player* player, Player* opponent, Fleet* opponentFleet, Coordinat
                 } else if (result == 2) {
                     totalHits++;
                     strcpy(sunkShips[sunkShipsCount++], sunkShipName);
+                } else if (result == 3) {
+                    alreadyTargeted++;
                 }
             }
         }
@@ -627,22 +654,22 @@ void artillery(Player* player, Player* opponent, Fleet* opponentFleet, Coordinat
 
     printf("Total Hits: %d\n", totalHits);
     printf("Total Misses: %d\n", totalMisses);
+    if (alreadyTargeted > 0) {
+        printf("Already Targeted Tiles: %d\n", alreadyTargeted);
+    }
 
     if (sunkShipsCount > 0) {
         for (int i = 0; i < sunkShipsCount; i++) {
             printf("You sunk the opponent's %s!\n", sunkShips[i]);
         }
-    }
-
-    // Check for unlocked functionalities
-    if (sunkShipsCount > 0) {
-        unlockSpecialMoves(player, opponent);
+        unlockSpecialMoves(player, opponent); // Unlock special moves if any ships were sunk
     }
 }
 
 void torpedo(Player* player, Player* opponent, Fleet* opponentFleet, const char* input, bool hardMode) {
     int totalHits = 0;
     int totalMisses = 0;
+    int alreadyTargeted = 0; // New variable to count already targeted tiles
     char sunkShips[SHIP_TYPES][20] = { "" };
     int sunkShipsCount = 0;
 
@@ -661,6 +688,8 @@ void torpedo(Player* player, Player* opponent, Fleet* opponentFleet, const char*
             } else if (result == 2) {
                 totalHits++;
                 strcpy(sunkShips[sunkShipsCount++], sunkShipName);
+            } else if (result == 3) {
+                alreadyTargeted++;
             }
         }
     } else {
@@ -677,31 +706,30 @@ void torpedo(Player* player, Player* opponent, Fleet* opponentFleet, const char*
                 } else if (result == 2) {
                     totalHits++;
                     strcpy(sunkShips[sunkShipsCount++], sunkShipName);
+                } else if (result == 3) {
+                    alreadyTargeted++;
                 }
             }
         } else {
             printf("Invalid row or column.\n");
-            if (hardMode) {
-                printf("You lose your turn. Press Enter to continue...");
-                fflush(stdout);
-                getchar();
-                return;
-            }
+            printf("You lose your turn. Press Enter to continue...");
+            fflush(stdout);
+            getchar();
+            return;
         }
     }
 
     printf("Total Hits: %d\n", totalHits);
     printf("Total Misses: %d\n", totalMisses);
+    if (alreadyTargeted > 0) {
+        printf("Already Targeted Tiles: %d\n", alreadyTargeted);
+    }
 
     if (sunkShipsCount > 0) {
         for (int i = 0; i < sunkShipsCount; i++) {
             printf("You sunk the opponent's %s!\n", sunkShips[i]);
         }
-    }
-
-    // Check for unlocked functionalities
-    if (sunkShipsCount > 0) {
-        unlockSpecialMoves(player, opponent);
+        unlockSpecialMoves(player, opponent); // Unlock special moves if any ships were sunk
     }
 }
 
