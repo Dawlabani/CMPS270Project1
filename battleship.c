@@ -13,6 +13,12 @@
 typedef enum { false, true } bool;
 
 typedef struct {
+    int x;
+    int y;
+} Coordinate;
+
+// Modified Player struct with bot-related fields
+typedef struct {
     char name[MAX_NAME_LENGTH];
     char grid[GRID_SIZE][GRID_SIZE];           // Player's own grid
     char trackingGrid[GRID_SIZE][GRID_SIZE];   // Player's view of opponent's grid
@@ -24,6 +30,7 @@ typedef struct {
     bool torpedoAvailableNextTurn;
     bool artilleryAvailable;
     bool torpedoAvailable;
+    bool isBot; // New field to identify bot players
     struct {
         int x;
         int y;
@@ -43,13 +50,8 @@ typedef struct {
     Ship ships[SHIP_TYPES];
 } Fleet;
 
-typedef struct {
-    int x;
-    int y;
-} Coordinate;
-
 // Function prototypes
-void initializePlayer(Player* player);
+void initializePlayer(Player* player, bool isBot); // Modified to include isBot
 void initializeGrid(char grid[GRID_SIZE][GRID_SIZE]);
 void displayGrid(char grid[GRID_SIZE][GRID_SIZE], bool showShips);
 void placeShips(Player* player, Fleet* fleet);
@@ -76,7 +78,6 @@ void coordinateToString(Coordinate coord, char* coordStr);
 void toLowerCase(char* str);
 void flushInputBuffer();
 
-
 int main() {
     srand((unsigned int)time(NULL));
     Player player1, player2;
@@ -85,8 +86,11 @@ int main() {
     char difficulty[MAX_INPUT_LENGTH];
 
     // Initialize players and fleets
-    initializePlayer(&player1);
-    initializePlayer(&player2);
+    initializePlayer(&player1, false); // Human player
+    initializePlayer(&player2, true);  // Bot player
+
+    // Introduction to the bot
+    printf("Welcome to Battleship! You will be playing against the Bot.\n");
 
     // Ask for tracking difficulty
     printf("Choose tracking difficulty level (easy/hard): ");
@@ -99,20 +103,15 @@ int main() {
 
     // Get player names with input validation
     do {
-        printf("Enter name for Player 1: ");
+        printf("Enter your name: ");
         getInput(player1.name, sizeof(player1.name));
         if (strlen(player1.name) == 0) {
             printf("Name cannot be empty. Please enter a valid name.\n");
         }
     } while (strlen(player1.name) == 0);
 
-    do {
-        printf("Enter name for Player 2: ");
-        getInput(player2.name, sizeof(player2.name));
-        if (strlen(player2.name) == 0) {
-            printf("Name cannot be empty. Please enter a valid name.\n");
-        }
-    } while (strlen(player2.name) == 0);
+    // Assign name to bot player
+    strcpy(player2.name, "Bot");
 
     // Randomly choose first player
     Player* currentPlayer = (rand() % 2 == 0) ? &player1 : &player2;
@@ -149,7 +148,7 @@ int main() {
     // Players place their ships
     placeShips(&player1, &fleet1);
     clearScreen();
-    placeShips(&player2, &fleet2);
+    placeShips(&player2, &fleet2); // Bot places ships automatically
     clearScreen();
 
     // Start the game loop
@@ -158,7 +157,7 @@ int main() {
     return 0;
 }
 
-void initializePlayer(Player* player) {
+void initializePlayer(Player* player, bool isBot) {
     initializeGrid(player->grid);
     initializeGrid(player->trackingGrid);
     player->radarSweepsUsed = 0;
@@ -167,8 +166,7 @@ void initializePlayer(Player* player) {
     player->shipsRemaining = SHIP_TYPES;
     player->artilleryAvailable = false;
     player->torpedoAvailable = false;
-    player->artilleryAvailableNextTurn = false;
-    player->torpedoAvailableNextTurn = false;
+    player->isBot = isBot; // Set bot status
     for (int i = 0; i < SHIP_TYPES; i++) {
         player->smokeScreens[i].x = -1;
         player->smokeScreens[i].y = -1;
@@ -199,6 +197,26 @@ void displayGrid(char grid[GRID_SIZE][GRID_SIZE], bool showShips) {
 }
 
 void placeShips(Player* player, Fleet* fleet) {
+    if (player->isBot) {
+        // Bot automatically places ships randomly
+        char orientations[] = { 'h', 'v' };
+        for (int i = 0; i < SHIP_TYPES; i++) {
+            bool placed = false;
+            while (!placed) {
+                Coordinate coord;
+                coord.x = rand() % GRID_SIZE;
+                coord.y = rand() % GRID_SIZE;
+                char orientation = orientations[rand() % 2];
+                if (isValidPlacement(player->grid, coord, fleet->ships[i].size, orientation)) {
+                    placeShipOnGrid(player->grid, coord, fleet->ships[i].size, orientation, fleet->ships[i].symbol);
+                    placed = true;
+                }
+            }
+        }
+        printf("Bot has placed its ships.\n");
+        return;
+    }
+
     char input[MAX_INPUT_LENGTH], orientation[MAX_INPUT_LENGTH];
     Coordinate coord;
 
@@ -207,7 +225,7 @@ void placeShips(Player* player, Fleet* fleet) {
         bool placed = false;
         while (!placed) {
             displayGrid(player->grid, true);
-            printf("Enter coordinates and orientation (horizontal/vertical) for %s (size %d): ", fleet->ships[i].name, fleet->ships[i].size);
+            printf("Enter coordinates and orientation (h/v) for %s (size %d): ", fleet->ships[i].name, fleet->ships[i].size);
 
             getInput(input, sizeof(input));
             char* token = strtok(input, " ");
@@ -241,7 +259,7 @@ void placeShips(Player* player, Fleet* fleet) {
 
             char dir = tolower(orientation[0]);
             if (dir != 'h' && dir != 'v') {
-                printf("Invalid orientation. Press Enter to continue...");
+                printf("Invalid orientation. Use 'h' for horizontal or 'v' for vertical. Press Enter to continue...");
                 fflush(stdout);
                 getchar();
                 continue;
@@ -252,7 +270,7 @@ void placeShips(Player* player, Fleet* fleet) {
                 placed = true;
                 clearScreen();
             } else {
-                printf("Invalid placement. Press Enter to continue...");
+                printf("Invalid placement. Ships cannot overlap or go out of bounds. Press Enter to continue...");
                 fflush(stdout);
                 getchar();
             }
@@ -449,6 +467,7 @@ void performMove(Player* player, Player* opponent, Fleet* opponentFleet, bool ha
                 Coordinate coord = parseCoordinate(argument);
                 if (coord.x != -1 && coord.y != -1) {
                     radarSweep(player, opponent, coord);
+                    player->radarSweepsUsed++;
                     validMove = true;
                     printf("Press Enter to continue...");
                     fflush(stdout);
@@ -494,8 +513,8 @@ void performMove(Player* player, Player* opponent, Fleet* opponentFleet, bool ha
             Coordinate coord = parseCoordinate(argument);
             if (coord.x != -1 && coord.y != -1) {
                 artillery(player, opponent, opponentFleet, coord, hardMode);
-                validMove = true;
                 player->artilleryAvailable = false;
+                validMove = true;
                 printf("Press Enter to continue...");
                 fflush(stdout);
                 getchar();
@@ -509,8 +528,8 @@ void performMove(Player* player, Player* opponent, Fleet* opponentFleet, bool ha
         } else if (strcmp(command, "torpedo") == 0) {
             if (argument[0] != '\0') {
                 torpedo(player, opponent, opponentFleet, argument, hardMode);
-                validMove = true;
                 player->torpedoAvailable = false;
+                validMove = true;
                 printf("Press Enter to continue...");
                 fflush(stdout);
                 getchar();
@@ -572,22 +591,22 @@ int fire(Player* player, Player* opponent, Fleet* opponentFleet, Coordinate coor
 
 void radarSweep(Player* player, Player* opponent, Coordinate coord) {
     if (coord.x < 0 || coord.x > GRID_SIZE - 2 || coord.y < 0 || coord.y > GRID_SIZE - 2) {
-        printf("Invalid coordinates.\n");
+        printf("Invalid coordinates for radar sweep.\n");
         return;
     }
     player->radarSweepsUsed++;
     bool found = false;
 
     // Check if the radar sweep area overlaps any active smoke screen areas
-    for (int s = 0; s < opponent->smokeScreensUsed; s++) {
-        if (!opponent->smokeScreens[s].active) continue; // Skip inactive smoke screens
+    for (int s = 0; s < player->smokeScreensUsed; s++) {
+        if (!player->smokeScreens[s].active) continue; // Skip inactive smoke screens
 
-        int sx = opponent->smokeScreens[s].x;
-        int sy = opponent->smokeScreens[s].y;
+        int sx = player->smokeScreens[s].x;
+        int sy = player->smokeScreens[s].y;
         if (coord.x + 1 >= sx && coord.x <= sx + 1 &&
             coord.y + 1 >= sy && coord.y <= sy + 1) {
-            printf("No enemy ships found.\n");
-            opponent->smokeScreens[s].active = false; // Deactivate the smoke screen
+            printf("Radar sweep area is obscured by a smoke screen. No information gained.\n");
+            player->smokeScreens[s].active = false; // Deactivate the smoke screen
             return;
         }
     }
@@ -603,15 +622,15 @@ void radarSweep(Player* player, Player* opponent, Coordinate coord) {
         if (found) break;
     }
     if (found) {
-        printf("Enemy ships found.\n");
+        printf("Enemy ships detected within the radar sweep area.\n");
     } else {
-        printf("No enemy ships found.\n");
+        printf("No enemy ships detected within the radar sweep area.\n");
     }
 }
 
 void smokeScreen(Player* player, Coordinate coord) {
     if (coord.x < 0 || coord.x > GRID_SIZE - 2 || coord.y < 0 || coord.y > GRID_SIZE - 2) {
-        printf("Invalid coordinates.\n");
+        printf("Invalid coordinates for smoke screen.\n");
         return;
     }
     // Store the smoke screen area and set it as active
@@ -675,8 +694,8 @@ void torpedo(Player* player, Player* opponent, Fleet* opponentFleet, const char*
 
     printf("Torpedo attack results:\n");
 
-    if ((input[0] >= 'a' && input[0] <= 'j')) {
-        int col = input[0] - 'a';
+    if (isalpha(input[0])) {
+        int col = tolower(input[0]) - 'a';
         for (int i = 0; i < GRID_SIZE; i++) {
             Coordinate coord = { col, i };
             char sunkShipName[20] = "";
