@@ -78,6 +78,8 @@ void coordinateToString(Coordinate coord, char* coordStr);
 void toLowerCase(char* str);
 void flushInputBuffer();
 
+// Function Implementations
+
 int main() {
     srand((unsigned int)time(NULL));
     Player player1, player2;
@@ -402,6 +404,41 @@ void performMove(Player* player, Player* opponent, Fleet* opponentFleet, bool ha
         if (player->torpedoAvailable) {
             printf("Torpedo [row/column]\n");
         }
+
+        if (player->isBot) {
+            // Bot's turn: fire randomly
+            Coordinate botCoord;
+            bool validCoord = false;
+            while (!validCoord) {
+                botCoord.x = rand() % GRID_SIZE;
+                botCoord.y = rand() % GRID_SIZE;
+                char cell = opponent->grid[botCoord.y][botCoord.x];
+                if (cell != 'o' && cell != 'X') {
+                    validCoord = true;
+                }
+            }
+            char sunkShipName[20] = "";
+            printf("Bot fires at %c%d.\n", 'A' + botCoord.x, botCoord.y + 1);
+            int result = fire(player, opponent, opponentFleet, botCoord, hardMode, sunkShipName);
+            if (result == 0) {
+                printf("Miss!\n");
+            } else if (result == 1) {
+                printf("Hit!\n");
+            } else if (result == 2) {
+                printf("Hit!\n");
+                printf("Bot sunk your %s!\n", sunkShipName);
+                // Unlock special moves after sinking a ship
+                unlockSpecialMoves(player, opponent);
+            } else if (result == 3) {
+                printf("Already targeted this coordinate.\n");
+            }
+            validMove = true;
+            printf("Press Enter to continue...");
+            fflush(stdout);
+            getchar();
+            return;
+        }
+
         printf("Enter your move: ");
         getInput(input, sizeof(input));
         toLowerCase(input);
@@ -545,6 +582,9 @@ void performMove(Player* player, Player* opponent, Fleet* opponentFleet, bool ha
 }
 
 int fire(Player* player, Player* opponent, Fleet* opponentFleet, Coordinate coord, bool hardMode, char* sunkShipName) {
+    // The bot firing is handled in performMove, not here
+    // So 'fire' function only processes the firing at coord
+
     char cell = opponent->grid[coord.y][coord.x];
 
     if (cell == '~') {
@@ -577,7 +617,6 @@ int fire(Player* player, Player* opponent, Fleet* opponentFleet, Coordinate coor
                 strcpy(sunkShipName, ship->name);
                 player->shipsSunk++;
                 opponent->shipsRemaining--;
-                // Remove unlockSpecialMoves call from here
                 return 2; // Hit and sunk
             } else {
                 return 1; // Hit but not sunk
@@ -594,7 +633,6 @@ void radarSweep(Player* player, Player* opponent, Coordinate coord) {
         printf("Invalid coordinates for radar sweep.\n");
         return;
     }
-    player->radarSweepsUsed++;
     bool found = false;
 
     // Check if the radar sweep area overlaps any active smoke screen areas
@@ -663,7 +701,7 @@ void artillery(Player* player, Player* opponent, Fleet* opponentFleet, Coordinat
                     totalHits++;
                 } else if (result == 2) {
                     totalHits++;
-                    strcpy(sunkShips[sunkShipsCount++], sunkShipName);
+                    strcpy(sunkShips[sunkShipsCount++], sunkShipName); // Correctly copy the sunk ship's name
                 } else if (result == 3) {
                     alreadyTargeted++;
                 }
