@@ -70,7 +70,7 @@ void swapFleets(Fleet** currentFleet, Fleet** opponentFleet); // Swap current an
 void performMove(Player* player, Player* opponent, Fleet* opponentFleet, bool hardMode); // Perform a player's move
 int fire(Player* player, Player* opponent, Fleet* opponentFleet, Coordinate coord, bool hardMode, char* sunkShipName); // Handle firing at a coordinate
 void radarSweep(Player* player, Player* opponent, Coordinate coord); // Perform a radar sweep
-void smokeScreen(Player* player, Coordinate coord); // Deploy a smoke screen
+bool smokeScreen(Player* player, Coordinate coord); // Deploy a smoke screen (Updated Function)
 void artillery(Player* player, Player* opponent, Fleet* opponentFleet, Coordinate coord, bool hardMode); // Perform an artillery strike
 void torpedo(Player* player, Player* opponent, Fleet* opponentFleet, const char* input, bool hardMode); // Perform a torpedo attack
 bool checkWin(Fleet* fleet); // Check if all ships are sunk
@@ -285,7 +285,8 @@ void placeShips(Player* player, Fleet* fleet) {
                 placeShipOnGrid(player->grid, coord, fleet->ships[i].size, dir, fleet->ships[i].symbol);
                 placed = true;
                 clearScreen();
-            } else {
+            }
+            else {
                 printf("Invalid placement. Ships cannot overlap or go out of bounds. Press Enter to continue...");
                 fflush(stdout);
                 getchar();
@@ -303,11 +304,13 @@ bool isValidPlacement(char grid[GRID_SIZE][GRID_SIZE], Coordinate coord, int siz
         if (x + size > GRID_SIZE) return false;
         for (int i = 0; i < size; i++)
             if (grid[y][x + i] != '~') return false;
-    } else if (orientation == 'v') {
+    }
+    else if (orientation == 'v') {
         if (y + size > GRID_SIZE) return false;
         for (int i = 0; i < size; i++)
             if (grid[y + i][x] != '~') return false;
-    } else {
+    }
+    else {
         return false;
     }
     return true;
@@ -321,7 +324,8 @@ void placeShipOnGrid(char grid[GRID_SIZE][GRID_SIZE], Coordinate coord, int size
     if (orientation == 'h') {
         for (int i = 0; i < size; i++)
             grid[y][x + i] = symbol;
-    } else if (orientation == 'v') {
+    }
+    else if (orientation == 'v') {
         for (int i = 0; i < size; i++)
             grid[y + i][x] = symbol;
     }
@@ -337,15 +341,18 @@ Coordinate parseCoordinate(const char* input) {
 
     if (col >= 'A' && col <= 'J') {
         coord.x = col - 'A';
-    } else if (col >= 'a' && col <= 'j') {
+    }
+    else if (col >= 'a' && col <= 'j') {
         coord.x = col - 'a';
-    } else {
+    }
+    else {
         return coord;
     }
 
     if (row >= 1 && row <= GRID_SIZE) {
         coord.y = row - 1;
-    } else {
+    }
+    else {
         coord.y = -1;
     }
 
@@ -472,7 +479,7 @@ void performMove(Player* player, Player* opponent, Fleet* opponentFleet, bool ha
             }
             else if (player->smokeScreensUsed < player->shipsSunk) {
                 // Deploy smoke screen
-                Coordinate coord = { rand() % (GRID_SIZE - 1), rand() % (GRID_SIZE - 1) };
+                Coordinate coord = { rand() % GRID_SIZE, rand() % GRID_SIZE };
                 printf("Bot deploys a Smoke Screen at %c%d.\n", 'A' + coord.x, coord.y + 1);
                 smokeScreen(player, coord);
                 validMove = true;
@@ -612,11 +619,16 @@ void performMove(Player* player, Player* opponent, Fleet* opponentFleet, bool ha
             if (player->smokeScreensUsed < player->shipsSunk) {
                 Coordinate coord = parseCoordinate(argument);
                 if (coord.x != -1 && coord.y != -1) {
-                    smokeScreen(player, coord);
-                    validMove = true;
-                    printf("Press Enter to continue...");
-                    fflush(stdout);
-                    getchar();
+                    if (smokeScreen(player, coord)) { // Updated function usage
+                        validMove = true;
+                        printf("Press Enter to continue...");
+                        fflush(stdout);
+                        getchar();
+                    }
+                    else {
+                        // Failed to deploy smoke screen
+                        return; // Player loses turn
+                    }
                 }
                 else {
                     printf("Invalid coordinates.\n");
@@ -670,6 +682,31 @@ void performMove(Player* player, Player* opponent, Fleet* opponentFleet, bool ha
             }
         }
     }
+}
+
+// Handle deploying a smoke screen (Updated Function)
+bool smokeScreen(Player* player, Coordinate coord) {
+    // Validate coordinates are within the grid boundaries
+    if (coord.x < 0 || coord.x >= GRID_SIZE || coord.y < 0 || coord.y >= GRID_SIZE) {
+        printf("Invalid coordinates. Smoke screen not deployed.\n");
+        return false;
+    }
+
+    // Check if the player has smoke screens available based on ships sunk
+    if (player->smokeScreensUsed >= player->shipsSunk) {
+        printf("No smoke screens available. You must sink more ships to use another smoke screen.\n");
+        return false;
+    }
+
+    // Deploy the smoke screen by setting its coordinates and active status
+    player->smokeScreens[player->smokeScreensUsed].x = coord.x;
+    player->smokeScreens[player->smokeScreensUsed].y = coord.y;
+    player->smokeScreens[player->smokeScreensUsed].active = true;
+    player->smokeScreensUsed++;
+
+    printf("Smoke screen deployed.\n");
+    clearScreen();
+    return true;
 }
 
 // Handle firing at a specific coordinate
@@ -760,22 +797,7 @@ void radarSweep(Player* player, Player* opponent, Coordinate coord) {
     }
 }
 
-// Deploy a smoke screen at the specified coordinate
-void smokeScreen(Player* player, Coordinate coord) {
-    if (coord.x < 0 || coord.x > GRID_SIZE - 2 || coord.y < 0 || coord.y > GRID_SIZE - 2) {
-        printf("Invalid coordinates for smoke screen.\n");
-        return;
-    }
-    // Store the smoke screen area and set it as active
-    player->smokeScreens[player->smokeScreensUsed].x = coord.x;
-    player->smokeScreens[player->smokeScreensUsed].y = coord.y;
-    player->smokeScreens[player->smokeScreensUsed].active = true; // Set as active
-    player->smokeScreensUsed++;
-    clearScreen();
-    printf("Smoke screen deployed.\n");
-}
-
-// Revised artillery function with enhanced functionality
+// Perform an artillery strike at the specified coordinate
 void artillery(Player* player, Player* opponent, Fleet* opponentFleet, Coordinate coord, bool hardMode) {
     int totalHits = 0;
     int totalMisses = 0;
@@ -840,7 +862,7 @@ void artillery(Player* player, Player* opponent, Fleet* opponentFleet, Coordinat
     }
 }
 
-// Implement the torpedo function as described earlier
+// Perform a torpedo attack based on user input
 void torpedo(Player* player, Player* opponent, Fleet* opponentFleet, const char* input, bool hardMode) {
     int totalHits = 0;
     int totalMisses = 0;
