@@ -754,10 +754,13 @@ int fire(Player* player, Player* opponent, Fleet* opponentFleet, Coordinate coor
     else if (cell == 'o' || cell == 'X') {
         return 3; // Already targeted
     }
-    return -1; // Should not reach here
+    else {
+        // Handle any unforeseen cases gracefully
+        printf("Error: Unexpected cell value '%c' at (%d, %d).\n", cell, coord.x, coord.y);
+        return 3; // Treat as already targeted to maintain game flow
+    }
 }
 
-// Perform a radar sweep at the specified coordinate
 void radarSweep(Player* player, Player* opponent, Coordinate coord) {
     if (coord.x < 0 || coord.x > GRID_SIZE - 2 || coord.y < 0 || coord.y > GRID_SIZE - 2) {
         printf("Invalid coordinates for radar sweep.\n");
