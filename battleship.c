@@ -534,7 +534,8 @@ int fire(Player* player, Player* opponent, Fleet* opponentFleet, Coordinate coor
             player->trackingGrid[coord.y][coord.x] = 'o';
         }
         return 0; // Miss
-    } else if (cell >= 'A' && cell <= 'Z') {
+    }
+    else if (cell >= 'A' && cell <= 'Z') {
         if (opponent->grid[coord.y][coord.x] == 'X') {
             return 3; // Already targeted
         }
@@ -558,18 +559,27 @@ int fire(Player* player, Player* opponent, Fleet* opponentFleet, Coordinate coor
                 strcpy(sunkShipName, ship->name);
                 player->shipsSunk++;
                 opponent->shipsRemaining--;
-                // Remove unlockSpecialMoves call from here
                 return 2; // Hit and sunk
-            } else {
+            }
+            else {
                 return 1; // Hit but not sunk
             }
         }
-    } else if (cell == 'o' || cell == 'X') {
+        else {
+            // Unexpected case: Ship symbol not found in fleet
+            printf("Error: Ship symbol '%c' not recognized.\n", cell);
+            return 3; // Treat as already targeted
+        }
+    }
+    else if (cell == 'o' || cell == 'X') {
         return 3; // Already targeted
     }
-    return -1; // Should not reach here
+    else {
+        // Handle any unforeseen cases gracefully
+        printf("Error: Unexpected cell value '%c' at (%d, %d).\n", cell, coord.x, coord.y);
+        return 3; // Treat as already targeted to maintain game flow
+    }
 }
-
 void radarSweep(Player* player, Player* opponent, Coordinate coord) {
     if (coord.x < 0 || coord.x > GRID_SIZE - 2 || coord.y < 0 || coord.y > GRID_SIZE - 2) {
         printf("Invalid coordinates.\n");
