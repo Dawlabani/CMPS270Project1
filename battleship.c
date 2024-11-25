@@ -39,6 +39,11 @@ typedef struct {
     } smokeScreens[SHIP_TYPES];
     Coordinate lastArtilleryCoord;    // Tracks last artillery strike coordinates
     int lastArtilleryHits;            // Tracks hits from last artillery strike
+
+    // Added for targeting in fire function
+    bool hasTarget;                   // Indicates if bot has a target to pursue
+    Coordinate targetQueue[4];        // Queue of targets to pursue
+    int targetQueueCount;             // Number of targets in queue
 } Player;
 
 // Ship structure representing each ship type
@@ -184,6 +189,10 @@ void initializePlayer(Player* player, bool isBot) {
         player->smokeScreens[i].y = -1;
         player->smokeScreens[i].active = false; // Initialize as inactive
     }
+    // Initialize targeting fields
+    player->hasTarget = false;
+    player->targetQueueCount = 0;
+    // Initialize targetQueue as empty
 }
 
 // Initialize the game grid with '~' to represent water
@@ -436,11 +445,9 @@ void performMove(Player* player, Player* opponent, Fleet* opponentFleet, bool ha
 
         if (player->isBot) {
             // Bot's turn: decide on a move
-            // For simplicity, bot will randomly choose a valid move
-            // You can enhance bot intelligence as needed
+            // Enhanced targeting for FIRE mode only
 
-            // Example: Bot randomly decides to fire, use radar, smoke, artillery, or torpedo based on availability
-            // Here, we prioritize special moves first
+            // Prioritize special moves
             if (player->artilleryAvailable) {
                 // Choose a random coordinate for artillery
                 Coordinate coord = { rand() % GRID_SIZE, rand() % GRID_SIZE };
@@ -485,15 +492,22 @@ void performMove(Player* player, Player* opponent, Fleet* opponentFleet, bool ha
                 validMove = true;
             }
             else {
-                // Default to firing at a random coordinate
+                // Default to firing with enhanced targeting
                 Coordinate coord;
                 bool validCoord = false;
-                while (!validCoord) {
-                    coord.x = rand() % GRID_SIZE;
-                    coord.y = rand() % GRID_SIZE;
-                    char cell = opponent->grid[coord.y][coord.x];
-                    if (cell != 'o' && cell != 'X') {
-                        validCoord = true;
+                if (player->hasTarget && player->targetQueueCount > 0) {
+                    // If there are targets in the queue, prioritize them
+                    coord = player->targetQueue[--player->targetQueueCount];
+                }
+                else {
+                    // Fire randomly
+                    while (!validCoord) {
+                        coord.x = rand() % GRID_SIZE;
+                        coord.y = rand() % GRID_SIZE;
+                        char cell = opponent->grid[coord.y][coord.x];
+                        if (cell != 'o' && cell != 'X') {
+                            validCoord = true;
+                        }
                     }
                 }
                 char sunkShipName[20] = "";
@@ -504,12 +518,48 @@ void performMove(Player* player, Player* opponent, Fleet* opponentFleet, bool ha
                 }
                 else if (result == 1) {
                     printf("Hit!\n");
+                    // Add adjacent targets to the queue
+                    if (!player->hasTarget) {
+                        player->hasTarget = true;
+                        // Define adjacent coordinates: up, right, down, left
+                        Coordinate adj[4];
+                        adj[0].x = coord.x;
+                        adj[0].y = coord.y - 1;
+                        adj[1].x = coord.x + 1;
+                        adj[1].y = coord.y;
+                        adj[2].x = coord.x;
+                        adj[2].y = coord.y + 1;
+                        adj[3].x = coord.x - 1;
+                        adj[3].y = coord.y;
+                        for (int i = 0; i < 4; i++) {
+                            // Check if within grid and not already targeted
+                            if (adj[i].x >=0 && adj[i].x < GRID_SIZE && adj[i].y >=0 && adj[i].y < GRID_SIZE) {
+                                char cell = opponent->grid[adj[i].y][adj[i].x];
+                                if (cell != 'o' && cell != 'X') {
+                                    // Add to queue if not already in queue
+                                    bool exists = false;
+                                    for (int j = 0; j < player->targetQueueCount; j++) {
+                                        if (player->targetQueue[j].x == adj[i].x && player->targetQueue[j].y == adj[i].y) {
+                                            exists = true;
+                                            break;
+                                        }
+                                    }
+                                    if (!exists && player->targetQueueCount < 4) {
+                                        player->targetQueue[player->targetQueueCount++] = adj[i];
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 else if (result == 2) {
                     printf("Hit!\n");
                     printf("Bot sunk your %s!\n", sunkShipName);
                     // Unlock special moves after sinking a ship
                     unlockSpecialMoves(player, opponent);
+                    // Reset targeting
+                    player->hasTarget = false;
+                    player->targetQueueCount = 0;
                 }
                 else if (result == 3) {
                     printf("Already targeted this coordinate.\n");
@@ -565,12 +615,48 @@ void performMove(Player* player, Player* opponent, Fleet* opponentFleet, bool ha
                 }
                 else if (result == 1) {
                     printf("Hit!\n");
+                    // Add adjacent targets to the queue
+                    if (!player->hasTarget) {
+                        player->hasTarget = true;
+                        // Define adjacent coordinates: up, right, down, left
+                        Coordinate adj[4];
+                        adj[0].x = coord.x;
+                        adj[0].y = coord.y - 1;
+                        adj[1].x = coord.x + 1;
+                        adj[1].y = coord.y;
+                        adj[2].x = coord.x;
+                        adj[2].y = coord.y + 1;
+                        adj[3].x = coord.x - 1;
+                        adj[3].y = coord.y;
+                        for (int i = 0; i < 4; i++) {
+                            // Check if within grid and not already targeted
+                            if (adj[i].x >=0 && adj[i].x < GRID_SIZE && adj[i].y >=0 && adj[i].y < GRID_SIZE) {
+                                char cell = opponent->grid[adj[i].y][adj[i].x];
+                                if (cell != 'o' && cell != 'X') {
+                                    // Add to queue if not already in queue
+                                    bool exists = false;
+                                    for (int j = 0; j < player->targetQueueCount; j++) {
+                                        if (player->targetQueue[j].x == adj[i].x && player->targetQueue[j].y == adj[i].y) {
+                                            exists = true;
+                                            break;
+                                        }
+                                    }
+                                    if (!exists && player->targetQueueCount < 4) {
+                                        player->targetQueue[player->targetQueueCount++] = adj[i];
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 else if (result == 2) {
                     printf("Hit!\n");
                     printf("You sunk the opponent's %s!\n", sunkShipName);
                     // Unlock special moves after sinking a ship
                     unlockSpecialMoves(player, opponent);
+                    // Reset targeting
+                    player->hasTarget = false;
+                    player->targetQueueCount = 0;
                 }
                 else if (result == 3) {
                     printf("Already targeted this coordinate.\n");
@@ -715,7 +801,7 @@ int fire(Player* player, Player* opponent, Fleet* opponentFleet, Coordinate coor
 
     if (cell == '~') {
         opponent->grid[coord.y][coord.x] = 'o';
-        if (!hardMode) {
+        if (!hardMode || player->isBot) {
             player->trackingGrid[coord.y][coord.x] = 'o';
         }
         return 0; // Miss
@@ -761,6 +847,7 @@ int fire(Player* player, Player* opponent, Fleet* opponentFleet, Coordinate coor
     }
 }
 
+// Perform a radar sweep at the specified coordinate
 void radarSweep(Player* player, Player* opponent, Coordinate coord) {
     if (coord.x < 0 || coord.x > GRID_SIZE - 2 || coord.y < 0 || coord.y > GRID_SIZE - 2) {
         printf("Invalid coordinates for radar sweep.\n");
