@@ -12,6 +12,13 @@
 
 typedef enum { false, true } bool;
 
+// Define DifficultyLevel enum
+typedef enum {
+    EASY,
+    MEDIUM,
+    HARD
+} DifficultyLevel;
+
 // Coordinate structure to represent positions on the grid
 typedef struct {
     int x;
@@ -39,6 +46,14 @@ typedef struct {
     } smokeScreens[SHIP_TYPES];
     Coordinate lastArtilleryCoord;    // Tracks last artillery strike coordinates
     int lastArtilleryHits;            // Tracks hits from last artillery strike
+
+    // Added for targeting in fire function
+    bool hasTarget;                   // Indicates if bot has a target to pursue
+    Coordinate targetQueue[4];        // Queue of targets to pursue
+    int targetQueueCount;             // Number of targets in queue
+
+    // New field for difficulty level
+    DifficultyLevel difficulty;       // Difficulty level of the player (especially bots)
 } Player;
 
 // Ship structure representing each ship type
@@ -56,7 +71,7 @@ typedef struct {
 } Fleet;
 
 // Function prototypes
-void initializePlayer(Player* player, bool isBot); // Initialize player with bot status
+void initializePlayer(Player* player, bool isBot, DifficultyLevel difficulty); // Initialize player with bot status and difficulty
 void initializeGrid(char grid[GRID_SIZE][GRID_SIZE]); // Initialize the game grid
 void displayGrid(char grid[GRID_SIZE][GRID_SIZE], bool showShips); // Display the grid
 void placeShips(Player* player, Fleet* fleet); // Place ships on the grid
@@ -70,7 +85,7 @@ void swapFleets(Fleet** currentFleet, Fleet** opponentFleet); // Swap current an
 void performMove(Player* player, Player* opponent, Fleet* opponentFleet, bool hardMode); // Perform a player's move
 int fire(Player* player, Player* opponent, Fleet* opponentFleet, Coordinate coord, bool hardMode, char* sunkShipName); // Handle firing at a coordinate
 void radarSweep(Player* player, Player* opponent, Coordinate coord); // Perform a radar sweep
-void smokeScreen(Player* player, Coordinate coord); // Deploy a smoke screen
+bool smokeScreen(Player* player, Coordinate coord); // Deploy a smoke screen
 void artillery(Player* player, Player* opponent, Fleet* opponentFleet, Coordinate coord, bool hardMode); // Perform an artillery strike
 void torpedo(Player* player, Player* opponent, Fleet* opponentFleet, const char* input, bool hardMode); // Perform a torpedo attack
 bool checkWin(Fleet* fleet); // Check if all ships are sunk
@@ -92,13 +107,28 @@ int main() {
     Fleet fleet1, fleet2;
     bool hardMode = false;
     char difficulty[MAX_INPUT_LENGTH];
-
-    // Initialize players and fleets
-    initializePlayer(&player1, false); // Human player
-    initializePlayer(&player2, true);  // Bot player
+    char botDifficultyInput[MAX_INPUT_LENGTH];
+    DifficultyLevel botDifficulty = MEDIUM; // Default to MEDIUM
 
     // Introduction to the bot
     printf("Welcome to Battleship! You will be playing against the Bot.\n");
+
+    // Ask for bot difficulty level
+    printf("Choose bot difficulty level (easy/medium/hard): ");
+    getInput(botDifficultyInput, sizeof(botDifficultyInput));
+    toLowerCase(botDifficultyInput);
+    if (strcmp(botDifficultyInput, "easy") == 0) {
+        botDifficulty = EASY;
+    }
+    else if (strcmp(botDifficultyInput, "medium") == 0) {
+        botDifficulty = MEDIUM;
+    }
+    else if (strcmp(botDifficultyInput, "hard") == 0) {
+        botDifficulty = HARD;
+    }
+    else {
+        printf("Invalid input. Defaulting to medium difficulty.\n");
+    }
 
     // Ask for tracking difficulty
     printf("Choose tracking difficulty level (easy/hard): ");
@@ -120,6 +150,10 @@ int main() {
 
     // Assign name to bot player
     strcpy(player2.name, "Bot");
+
+    // Initialize players with difficulty levels
+    initializePlayer(&player1, false, MEDIUM); // Human player with default difficulty
+    initializePlayer(&player2, true, botDifficulty); // Bot player with selected difficulty
 
     // Randomly choose first player
     Player* currentPlayer = (rand() % 2 == 0) ? &player1 : &player2;
@@ -165,8 +199,8 @@ int main() {
     return 0;
 }
 
-// Initialize player with bot status and reset all fields
-void initializePlayer(Player* player, bool isBot) {
+// Initialize player with bot status, difficulty level, and reset all fields
+void initializePlayer(Player* player, bool isBot, DifficultyLevel difficulty) {
     initializeGrid(player->grid);
     initializeGrid(player->trackingGrid);
     player->radarSweepsUsed = 0;
@@ -179,6 +213,9 @@ void initializePlayer(Player* player, bool isBot) {
     player->lastArtilleryCoord.x = -1; // Initialize artillery coordinates
     player->lastArtilleryCoord.y = -1;
     player->lastArtilleryHits = 0;     // Initialize artillery hits
+    player->difficulty = difficulty;   // Set difficulty level
+    player->hasTarget = false;
+    player->targetQueueCount = 0;
     for (int i = 0; i < SHIP_TYPES; i++) {
         player->smokeScreens[i].x = -1;
         player->smokeScreens[i].y = -1;
@@ -285,7 +322,8 @@ void placeShips(Player* player, Fleet* fleet) {
                 placeShipOnGrid(player->grid, coord, fleet->ships[i].size, dir, fleet->ships[i].symbol);
                 placed = true;
                 clearScreen();
-            } else {
+            }
+            else {
                 printf("Invalid placement. Ships cannot overlap or go out of bounds. Press Enter to continue...");
                 fflush(stdout);
                 getchar();
@@ -303,11 +341,13 @@ bool isValidPlacement(char grid[GRID_SIZE][GRID_SIZE], Coordinate coord, int siz
         if (x + size > GRID_SIZE) return false;
         for (int i = 0; i < size; i++)
             if (grid[y][x + i] != '~') return false;
-    } else if (orientation == 'v') {
+    }
+    else if (orientation == 'v') {
         if (y + size > GRID_SIZE) return false;
         for (int i = 0; i < size; i++)
             if (grid[y + i][x] != '~') return false;
-    } else {
+    }
+    else {
         return false;
     }
     return true;
@@ -321,7 +361,8 @@ void placeShipOnGrid(char grid[GRID_SIZE][GRID_SIZE], Coordinate coord, int size
     if (orientation == 'h') {
         for (int i = 0; i < size; i++)
             grid[y][x + i] = symbol;
-    } else if (orientation == 'v') {
+    }
+    else if (orientation == 'v') {
         for (int i = 0; i < size; i++)
             grid[y + i][x] = symbol;
     }
@@ -337,15 +378,18 @@ Coordinate parseCoordinate(const char* input) {
 
     if (col >= 'A' && col <= 'J') {
         coord.x = col - 'A';
-    } else if (col >= 'a' && col <= 'j') {
+    }
+    else if (col >= 'a' && col <= 'j') {
         coord.x = col - 'a';
-    } else {
+    }
+    else {
         return coord;
     }
 
     if (row >= 1 && row <= GRID_SIZE) {
         coord.y = row - 1;
-    } else {
+    }
+    else {
         coord.y = -1;
     }
 
@@ -429,87 +473,26 @@ void performMove(Player* player, Player* opponent, Fleet* opponentFleet, bool ha
 
         if (player->isBot) {
             // Bot's turn: decide on a move
-            // For simplicity, bot will randomly choose a valid move
-            // You can enhance bot intelligence as needed
-
-            // Example: Bot randomly decides to fire, use radar, smoke, artillery, or torpedo based on availability
-            // Here, we prioritize special moves first
-            if (player->artilleryAvailable) {
-                // Choose a random coordinate for artillery
-                Coordinate coord = { rand() % GRID_SIZE, rand() % GRID_SIZE };
-                printf("Bot uses Artillery at %c%d.\n", 'A' + coord.x, coord.y + 1);
-                artillery(player, opponent, opponentFleet, coord, hardMode);
-                player->artilleryAvailable = false;
-                validMove = true;
+            // Placeholder for bot move logic
+            // For now, bot will perform a fire action randomly
+            Coordinate coord = { rand() % GRID_SIZE, rand() % GRID_SIZE };
+            printf("Bot fires at %c%d.\n", 'A' + coord.x, coord.y + 1);
+            char sunkShipName[20] = "";
+            int result = fire(player, opponent, opponentFleet, coord, hardMode, sunkShipName);
+            if (result == 0) {
+                printf("Miss!\n");
             }
-            else if (player->torpedoAvailable) {
-                // Choose to torpedo a random row or column
-                if (rand() % 2 == 0) {
-                    // Torpedo a random column
-                    char col = 'A' + (rand() % GRID_SIZE);
-                    char colStr[2] = { col, '\0' };
-                    printf("Bot uses Torpedo at column %c.\n", col);
-                    torpedo(player, opponent, opponentFleet, colStr, hardMode);
-                }
-                else {
-                    // Torpedo a random row
-                    int row = (rand() % GRID_SIZE) + 1;
-                    char rowStr[3];
-                    sprintf(rowStr, "%d", row);
-                    printf("Bot uses Torpedo at row %d.\n", row);
-                    torpedo(player, opponent, opponentFleet, rowStr, hardMode);
-                }
-                player->torpedoAvailable = false;
-                validMove = true;
+            else if (result == 1) {
+                printf("Hit!\n");
             }
-            else if (player->radarSweepsUsed < MAX_RADAR_SWEEPS) {
-                // Use radar sweep
-                Coordinate coord = { rand() % GRID_SIZE, rand() % GRID_SIZE };
-                printf("Bot uses Radar at %c%d.\n", 'A' + coord.x, coord.y + 1);
-                radarSweep(player, opponent, coord);
-                player->radarSweepsUsed++;
-                validMove = true;
+            else if (result == 2) {
+                printf("Hit and sunk the opponent's %s!\n", sunkShipName);
+                unlockSpecialMoves(player, opponent);
             }
-            else if (player->smokeScreensUsed < player->shipsSunk) {
-                // Deploy smoke screen
-                Coordinate coord = { rand() % (GRID_SIZE - 1), rand() % (GRID_SIZE - 1) };
-                printf("Bot deploys a Smoke Screen at %c%d.\n", 'A' + coord.x, coord.y + 1);
-                smokeScreen(player, coord);
-                validMove = true;
+            else if (result == 3) {
+                printf("Already targeted this coordinate.\n");
             }
-            else {
-                // Default to firing at a random coordinate
-                Coordinate coord;
-                bool validCoord = false;
-                while (!validCoord) {
-                    coord.x = rand() % GRID_SIZE;
-                    coord.y = rand() % GRID_SIZE;
-                    char cell = opponent->grid[coord.y][coord.x];
-                    if (cell != 'o' && cell != 'X') {
-                        validCoord = true;
-                    }
-                }
-                char sunkShipName[20] = "";
-                printf("Bot fires at %c%d.\n", 'A' + coord.x, coord.y + 1);
-                int result = fire(player, opponent, opponentFleet, coord, hardMode, sunkShipName);
-                if (result == 0) {
-                    printf("Miss!\n");
-                }
-                else if (result == 1) {
-                    printf("Hit!\n");
-                }
-                else if (result == 2) {
-                    printf("Hit!\n");
-                    printf("Bot sunk your %s!\n", sunkShipName);
-                    // Unlock special moves after sinking a ship
-                    unlockSpecialMoves(player, opponent);
-                }
-                else if (result == 3) {
-                    printf("Already targeted this coordinate.\n");
-                }
-                validMove = true;
-            }
-
+            validMove = true;
             printf("Press Enter to continue...");
             fflush(stdout);
             getchar();
@@ -558,12 +541,47 @@ void performMove(Player* player, Player* opponent, Fleet* opponentFleet, bool ha
                 }
                 else if (result == 1) {
                     printf("Hit!\n");
+                    // Add adjacent targets to the queue
+                    if (!player->hasTarget) {
+                        player->hasTarget = true;
+                        // Define adjacent coordinates: up, right, down, left
+                        Coordinate adj[4];
+                        adj[0].x = coord.x;
+                        adj[0].y = coord.y - 1;
+                        adj[1].x = coord.x + 1;
+                        adj[1].y = coord.y;
+                        adj[2].x = coord.x;
+                        adj[2].y = coord.y + 1;
+                        adj[3].x = coord.x - 1;
+                        adj[3].y = coord.y;
+                        for (int i = 0; i < 4; i++) {
+                            // Check if within grid and not already targeted
+                            if (adj[i].x >=0 && adj[i].x < GRID_SIZE && adj[i].y >=0 && adj[i].y < GRID_SIZE) {
+                                char cell = opponent->grid[adj[i].y][adj[i].x];
+                                if (cell != 'o' && cell != 'X') {
+                                    // Add to queue if not already in queue
+                                    bool exists = false;
+                                    for (int j = 0; j < player->targetQueueCount; j++) {
+                                        if (player->targetQueue[j].x == adj[i].x && player->targetQueue[j].y == adj[i].y) {
+                                            exists = true;
+                                            break;
+                                        }
+                                    }
+                                    if (!exists && player->targetQueueCount < 4) {
+                                        player->targetQueue[player->targetQueueCount++] = adj[i];
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 else if (result == 2) {
-                    printf("Hit!\n");
-                    printf("You sunk the opponent's %s!\n", sunkShipName);
+                    printf("Hit!\nYou sunk the opponent's %s!\n", sunkShipName);
                     // Unlock special moves after sinking a ship
                     unlockSpecialMoves(player, opponent);
+                    // Reset targeting
+                    player->hasTarget = false;
+                    player->targetQueueCount = 0;
                 }
                 else if (result == 3) {
                     printf("Already targeted this coordinate.\n");
@@ -612,11 +630,16 @@ void performMove(Player* player, Player* opponent, Fleet* opponentFleet, bool ha
             if (player->smokeScreensUsed < player->shipsSunk) {
                 Coordinate coord = parseCoordinate(argument);
                 if (coord.x != -1 && coord.y != -1) {
-                    smokeScreen(player, coord);
-                    validMove = true;
-                    printf("Press Enter to continue...");
-                    fflush(stdout);
-                    getchar();
+                    if (smokeScreen(player, coord)) { // Updated function usage
+                        validMove = true;
+                        printf("Press Enter to continue...");
+                        fflush(stdout);
+                        getchar();
+                    }
+                    else {
+                        // Failed to deploy smoke screen
+                        return; // Player loses turn
+                    }
                 }
                 else {
                     printf("Invalid coordinates.\n");
@@ -672,13 +695,38 @@ void performMove(Player* player, Player* opponent, Fleet* opponentFleet, bool ha
     }
 }
 
+// Handle deploying a smoke screen (Updated Function)
+bool smokeScreen(Player* player, Coordinate coord) {
+    // Validate coordinates are within the grid boundaries
+    if (coord.x < 0 || coord.x >= GRID_SIZE || coord.y < 0 || coord.y >= GRID_SIZE) {
+        printf("Invalid coordinates. Smoke screen not deployed.\n");
+        return false;
+    }
+
+    // Check if the player has smoke screens available based on ships sunk
+    if (player->smokeScreensUsed >= player->shipsSunk) {
+        printf("No smoke screens available. You must sink more ships to use another smoke screen.\n");
+        return false;
+    }
+
+    // Deploy the smoke screen by setting its coordinates and active status
+    player->smokeScreens[player->smokeScreensUsed].x = coord.x;
+    player->smokeScreens[player->smokeScreensUsed].y = coord.y;
+    player->smokeScreens[player->smokeScreensUsed].active = true;
+    player->smokeScreensUsed++;
+
+    printf("Smoke screen deployed.\n");
+    clearScreen();
+    return true;
+}
+
 // Handle firing at a specific coordinate
 int fire(Player* player, Player* opponent, Fleet* opponentFleet, Coordinate coord, bool hardMode, char* sunkShipName) {
     char cell = opponent->grid[coord.y][coord.x];
 
     if (cell == '~') {
         opponent->grid[coord.y][coord.x] = 'o';
-        if (!hardMode) {
+        if (!hardMode || player->isBot) {
             player->trackingGrid[coord.y][coord.x] = 'o';
         }
         return 0; // Miss
@@ -717,7 +765,11 @@ int fire(Player* player, Player* opponent, Fleet* opponentFleet, Coordinate coor
     else if (cell == 'o' || cell == 'X') {
         return 3; // Already targeted
     }
-    return -1; // Should not reach here
+    else {
+        // Handle any unforeseen cases gracefully
+        printf("Error: Unexpected cell value '%c' at (%d, %d).\n", cell, coord.x, coord.y);
+        return 3; // Treat as already targeted to maintain game flow
+    }
 }
 
 // Perform a radar sweep at the specified coordinate
@@ -760,22 +812,7 @@ void radarSweep(Player* player, Player* opponent, Coordinate coord) {
     }
 }
 
-// Deploy a smoke screen at the specified coordinate
-void smokeScreen(Player* player, Coordinate coord) {
-    if (coord.x < 0 || coord.x > GRID_SIZE - 2 || coord.y < 0 || coord.y > GRID_SIZE - 2) {
-        printf("Invalid coordinates for smoke screen.\n");
-        return;
-    }
-    // Store the smoke screen area and set it as active
-    player->smokeScreens[player->smokeScreensUsed].x = coord.x;
-    player->smokeScreens[player->smokeScreensUsed].y = coord.y;
-    player->smokeScreens[player->smokeScreensUsed].active = true; // Set as active
-    player->smokeScreensUsed++;
-    clearScreen();
-    printf("Smoke screen deployed.\n");
-}
-
-// Revised artillery function with enhanced functionality
+// Perform an artillery strike at the specified coordinate
 void artillery(Player* player, Player* opponent, Fleet* opponentFleet, Coordinate coord, bool hardMode) {
     int totalHits = 0;
     int totalMisses = 0;
@@ -840,7 +877,7 @@ void artillery(Player* player, Player* opponent, Fleet* opponentFleet, Coordinat
     }
 }
 
-// Implement the torpedo function as described earlier
+// Perform a torpedo attack based on user input
 void torpedo(Player* player, Player* opponent, Fleet* opponentFleet, const char* input, bool hardMode) {
     int totalHits = 0;
     int totalMisses = 0;
