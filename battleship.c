@@ -95,7 +95,6 @@ Coordinate getBestArtilleryTarget(Player* bot);
 int countUntargetedTilesInArtilleryArea(Player* bot, Coordinate coord);
 bool chooseTorpedoTarget(Player* bot, Player* opponent, Fleet* opponentFleet, bool hardMode);
 void addPotentialTarget(Player* player, Coordinate coord);
-bool isUnderSmoke(Player* opponent, Coordinate coord);
 Coordinate getSmokeScreenCoordinateForBot(Player* bot);
 void addArtilleryHitTargets(Player* bot, Coordinate coord);
 void handleEdgeCoordinates(int* start, int* end);
@@ -734,13 +733,6 @@ void performBotMove(Player* bot, Player* opponent, Fleet* opponentFleet, bool ha
 }
 
 int fire(Player* player, Player* opponent, Fleet* opponentFleet, Coordinate coord, bool hardMode, char* sunkShipName) {
-    if (isUnderSmoke(opponent, coord)) {
-        // Optionally, mark this cell as under smoke in tracking grid
-        if (!hardMode || player->isBot) {
-            player->trackingGrid[coord.y][coord.x] = 's'; // 's' for smoke
-        }
-        return -1; // Indicate that the shot was ineffective
-    }
 
     char cell = opponent->grid[coord.y][coord.x];
 
@@ -1344,27 +1336,6 @@ bool chooseTorpedoTarget(Player* bot, Player* opponent, Fleet* opponentFleet, bo
     }
 
     return true;
-}
-
-bool isUnderSmoke(Player* opponent, Coordinate coord) {
-    for (int i = 0; i < opponent->smokeScreensUsed; i++) {
-        if (opponent->smokeScreens[i].active) {
-            Coordinate smokeCoord = opponent->smokeScreens[i].coord;
-            int xStart = smokeCoord.x;
-            int yStart = smokeCoord.y;
-            int xEnd = smokeCoord.x + 1;
-            int yEnd = smokeCoord.y + 1;
-
-            handleEdgeCoordinates(&xStart, &xEnd);
-            handleEdgeCoordinates(&yStart, &yEnd);
-
-            if (coord.x >= xStart && coord.x <= xEnd &&
-                coord.y >= yStart && coord.y <= yEnd) {
-                return true;
-            }
-        }
-    }
-    return false;
 }
 
 Coordinate getSmokeScreenCoordinateForBot(Player* bot) {
