@@ -96,7 +96,6 @@ int countUntargetedTilesInArtilleryArea(Player* bot, Coordinate coord);
 bool chooseTorpedoTarget(Player* bot, Player* opponent, Fleet* opponentFleet, bool hardMode);
 void addPotentialTarget(Player* player, Coordinate coord);
 Coordinate getSmokeScreenCoordinateForBot(Player* bot);
-void addArtilleryHitTargets(Player* bot, Coordinate coord);
 void handleEdgeCoordinates(int* start, int* end);
 
 int main() {
@@ -608,8 +607,6 @@ void performBotMove(Player* bot, Player* opponent, Fleet* opponentFleet, bool ha
         }
 
     } else {
-        // Existing code for MEDIUM and HARD difficulties
-
         // Determine move probabilities based on difficulty level
         int radarChance, artilleryChance, torpedoChance, smokeChance;
         switch (bot->difficulty) {
@@ -1375,22 +1372,4 @@ void handleEdgeCoordinates(int* start, int* end) {
     if (*end >= GRID_SIZE) *end = GRID_SIZE - 1;
 }
 
-void addArtilleryHitTargets(Player* bot, Coordinate coord) {
-    int xStart = coord.x - 1;
-    int yStart = coord.y - 1;
-    int xEnd = coord.x + 2;
-    int yEnd = coord.y + 2;
 
-    handleEdgeCoordinates(&xStart, &xEnd);
-    handleEdgeCoordinates(&yStart, &yEnd);
-
-    for (int i = yStart; i <= yEnd; i++) {
-        for (int j = xStart; j <= xEnd; j++) {
-            if (bot->trackingGrid[i][j] == '~') {
-                Coordinate newCoord = { j, i };
-                addPotentialTarget(bot, newCoord);
-            }
-        }
-    }
-    bot->lastArtilleryHits = 0;
-}
